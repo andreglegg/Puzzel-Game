@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.code-workspace
+*.sublime-project
+*.sublime-workspace
+
+# Lua compiled files
+*.luac
+
+# Generated builds
+build/
+*.apk
+*.ipa
+*.zip
+
+# Logs and temporary data
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Solar2D specific
+.luac.out
+.DCCache/
