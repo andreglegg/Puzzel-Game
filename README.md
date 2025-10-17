@@ -41,6 +41,42 @@ Puzzle Map Makers/
 2. Open the Solar2D Simulator and choose `File → Open...`.
 3. Select `Puzzle/main.lua` to run the game, or `Puzzle Map Makers/main.lua` to launch the editor.
 
+## Developer Tooling
+
+Install the Lua toolchain once (macOS/Linux example):
+
+```bash
+brew install lua luarocks          # or use your package manager
+luarocks install luacheck --local
+luarocks install busted --local
+```
+
+Add your local LuaRocks bin directory to the `PATH` (once per shell profile, e.g. `~/.zshrc`):
+
+```bash
+export PATH="$HOME/.luarocks/bin:$PATH"
+```
+
+Useful helper scripts live under `tools/`:
+
+```bash
+./tools/lint.sh           # runs luacheck with repo-wide configuration
+./tools/test.sh           # runs busted specs under tests/
+./tools/check_assets.sh   # verifies 1x/2x/4x PNG sets (defaults to both projects)
+```
+
+Tests currently exercise level metadata to ensure stage definitions load cleanly in both the game and the editor.
+
+## Continuous Integration
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push / pull request. It installs Lua 5.3, Luacheck, and Busted, then executes:
+
+1. `./tools/lint.sh`
+2. `./tools/test.sh`
+3. `./tools/check_assets.sh`
+
+Keep these scripts green before opening a PR to guarantee basic regressions are caught early.
+
 ## Coding Guidelines
 
 - Prefer modules under `app/` for gameplay/editor logic; reserve top-level folders for assets.
@@ -49,19 +85,9 @@ Puzzle Map Makers/
 - Track timers and transitions explicitly and cancel them in `scene:hide`/`scene:destroy` to avoid stray callbacks.
 - Keep new assets inside the relevant `images/`, `sounds/`, or `particles/` folder to simplify packaging.
 
-## Preparing for Version Control
+## Next Steps
 
-A `.gitignore` is included to filter out editor caches, artifacts, and compiled Lua chunks. Before your first commit:
-
-```bash
-git init
-git add .
-git commit -m "Initial import"
-```
-
-## Future Improvements
-
-- Extract common constants (colors, fonts) into a shared module beneath `app/`.
-- Add automated sanity scripts (e.g., LuaCheck) once a Lua toolchain is available locally.
-- Write end-to-end smoke tests for the editor to validate level exports against the game loader.
-
+- Extract common constants (colors, fonts) into shared modules under `app/`.
+- Expand the Busted suite with behavioural tests (e.g., verifying level progression rules, editor export output).
+- Integrate lint/test scripts into pre-commit hooks for faster feedback.
+- Explore automated texture packing or compression in the asset check script if the art pipeline grows.
