@@ -1,133 +1,116 @@
-display.setStatusBar( display.HiddenStatusBar )
+display.setStatusBar(display.HiddenStatusBar)
 
-local composer = require( "composer" )
-local scenes = require( "app.scene_names" )
+local composer = require("composer")
+local scenes = require("app.scene_names")
+local screen = require("libs.screen")
+local settings = require("settings")
 
 local scene = composer.newScene()
 
--- -----------------------------------------------------------------------------------------------------------------
--- All code outside of the listener functions will only be executed ONCE unless "composer.removeScene()" is called
--- -----------------------------------------------------------------------------------------------------------------
+local state = {
+    startTimer = nil,
+}
 
--- Local forward references should go here
-
-local lib 				= require("libs.app5iveLib")
-local screen 			= require( "libs.screen")
-local particleDesigner  = require( "particles.particleDesigner" )
-local settings          = require( "settings")
---local blueBg           = require( "app.backgrounds.deep_blue")
--- -------------------------------------------------------------------------------
-
-
--- "scene:create()"
-local startGameTimer
-
-function scene:create( event )
-
---[[print( settings.defaultFont )
-local backgroundMusic = audio.loadStream( "sounds/music/menu.ogg" )
-audio.play( backgroundMusic, { channel=1 } )
-audio.setVolume( 0.2, { channel=1 } ) 
---]]
-    local sceneGroup = self.view
-
-    local uiGroup = display.newGroup( )
-    sceneGroup:insert(uiGroup)
-    -- Initialize the scene here
-    -- Example: add display objects to "sceneGroup", add touch listeners, etc.
-    --popMenu.addMenu(screen.right-10, screen.top+10)
-    --blueBg.addBg(sceneGroup)
-    require( "app.backgrounds.deep_dark").addBg(sceneGroup)
-
-
-
-local onComplete = function( event )
-   print( "video session ended" )
-end
-media.playVideo( "BigBuckBunny_640x360.m4v", true, onComplete )
-
-	local playButton = display.newText( uiGroup, "PLAY", screen.centerX, screen.centerY, settings.defaultFontOblique, 50 )
-	playButton.touch = function( self, event )
-		if event.phase == "began" then
-			self.alpha = 0.5
-	        startGameTimer = timer.performWithDelay(400, function()
-			local options = {
-			    effect = "slideLeft",
-			    time = 300,
-			    params = { currentLevel = 2}
-			}        	
-	        	composer.gotoScene( scenes.game, options )
-	        end)			
-			elseif event.phase == "ended" then
-			self.alpha = 1
-		end
-	end
-
-	playButton:addEventListener( "touch", playButton )
-end
-
-
--- "scene:show()"
-function scene:show( event )
-
-    local sceneGroup = self.view
-    local phase = event.phase
-
-    if ( phase == "will" ) then
-        -- Called when the scene is still off screen (but is about to come on screen)
-	composer.removeScene( scenes.thankyou )        
-    elseif ( phase == "did" ) then
-        -- Called when the scene is now on screen
-        -- Insert code here to make the scene come alive
-        -- Example: start timers, begin animation, play audio, etc.
-
+local function clearStartTimer()
+    if state.startTimer then
+        timer.cancel(state.startTimer)
+        state.startTimer = nil
     end
 end
 
+local function createStartButton(group)
+    local button = display.newRoundedRect(group, screen.centerX, screen.centerY + 60, 220, 64, 18)
+    button:setFillColor(0.12, 0.12, 0.12)
+    button.strokeWidth = 3
+    button:setStrokeColor(0.96, 0.65, 0.14)
 
--- "scene:hide()"
-function scene:hide( event )
+    local label = display.newText({
+        parent = group,
+        text = "PLAY",
+        x = button.x,
+        y = button.y,
+        font = settings.defaultFontOblique,
+        fontSize = 32,
+    })
 
-    local sceneGroup = self.view
-    local phase = event.phase
+    label:setFillColor(1, 1, 1)
 
-    if ( phase == "will" ) then
-        -- Called when the scene is on screen (but is about to go off screen)
-        -- Insert code here to "pause" the scene
-        -- Example: stop timers, stop animation, stop audio, etc.
-        if startGameTimer then
-            timer.cancel( startGameTimer )
-            startGameTimer = nil
+    button:addEventListener("touch", function(event)
+        if event.phase == "began" then
+            button.alpha = 0.7
+            label.alpha = 0.7
+            clearStartTimer()
+            state.startTimer = timer.performWithDelay(250, function()
+                composer.gotoScene(scenes.game, {
+                    effect = "slideLeft",
+                    time = 250,
+                    params = { currentLevel = 1 },
+                })
+            end)
+        elseif event.phase == "ended" or event.phase == "cancelled" then
+            button.alpha = 1
+            label.alpha = 1
         end
-    elseif ( phase == "did" ) then
-        -- Called immediately after scene goes off screen
+        return true
+    end)
+end
+
+local function createUi(sceneGroup)
+    local uiGroup = display.newGroup()
+    sceneGroup:insert(uiGroup)
+
+    local title = display.newText({
+        parent = uiGroup,
+        text = "PUZZLE",
+        x = screen.centerX,
+        y = screen.centerY - 80,
+        font = settings.defaultFont,
+        fontSize = 56,
+    })
+    title:setFillColor(1, 1, 1)
+
+    local subtitle = display.newText({
+        parent = uiGroup,
+        text = "Swipe to guide the token to its goal",
+        x = screen.centerX,
+        y = title.y + 40,
+        width = screen.width * 0.8,
+        font = settings.defaultFontOblique,
+        fontSize = 20,
+        align = "center",
+    })
+    subtitle:setFillColor(0.9, 0.9, 0.9)
+
+    createStartButton(uiGroup)
+end
+
+local function onSceneCreate()
+    local sceneGroup = scene.view
+    require("app.backgrounds.deep_dark").addBg(sceneGroup)
+    createUi(sceneGroup)
+end
+
+scene:addEventListener("create", onSceneCreate)
+
+local function onSceneShow(_, event)
+    if event and event.phase == "will" then
+        composer.removeScene(scenes.reload)
+        composer.removeScene(scenes.thankyou)
     end
 end
 
-
--- "scene:destroy()"
-function scene:destroy( event )
-
-    local sceneGroup = self.view
-
-    -- Called prior to the removal of scene's view
-    -- Insert code here to clean up the scene
-    -- Example: remove display objects, save state, etc.
-    if startGameTimer then
-        timer.cancel( startGameTimer )
-        startGameTimer = nil
+local function onSceneHide(_, event)
+    if event and event.phase == "will" then
+        clearStartTimer()
     end
 end
 
+local function onSceneDestroy()
+    clearStartTimer()
+end
 
--- -------------------------------------------------------------------------------
-
--- Listener setup
-scene:addEventListener( "create", scene )
-scene:addEventListener( "show", scene )
-scene:addEventListener( "hide", scene )
-scene:addEventListener( "destroy", scene )
-
--- -------------------------------------------------------------------------------
+scene:addEventListener("show", onSceneShow)
+scene:addEventListener("hide", onSceneHide)
+scene:addEventListener("destroy", onSceneDestroy)
 
 return scene

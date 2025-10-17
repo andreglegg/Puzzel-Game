@@ -1,4 +1,4 @@
-local level = { 
+local level = {
    {type="config", gw=5, gh=5, cw=80, ch=80, target=8},
    {type="nomove", x=1, y=5 },
    {type="nomove", x=1, y=4 },

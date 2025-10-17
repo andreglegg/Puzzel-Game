@@ -1,48 +1,54 @@
---THIS IS WORK AND CODE CREATED BY LERG FOR CORONA SDK/ LUA USE. I DID NOT ADD ANYTHING TO THIS BUT TO UPDATE THE MODULE FOR GFX2. ALL CREDIT GOES TO LERG FOR CREATING THE ORIGINAL CODE.
+local performance = {}
 
-
-local _M = {}
- 
 local mFloor = math.floor
 local sGetInfo = system.getInfo
 local sGetTimer = system.getTimer
- 
+
 local prevTime = 0
-_M.added = true
+performance.added = true
+
 local function createText()
-    local memory = display.newText('00 00.00 000',10,0, 'Helvetica', 14);
-	--memory:setFillColor(255,53,247)
-	memory:setFillColor(1)
+    local memory = display.newText("00 00.00 000", 10, 0, "Helvetica", 14)
+    memory:setFillColor(1)
     memory.anchorY = 0
-    memory.x, memory.y = display.contentCenterX, display.screenOriginY+25
-    function memory:tap ()
-        collectgarbage('collect')
-        if _M.added then
-            Runtime:removeEventListener('enterFrame', _M.labelUpdater)
-            _M.added = false
-		memory.alpha = .01
+    memory.x = display.contentCenterX
+    memory.y = display.screenOriginY + 25
+
+    local function onTap(self)
+        collectgarbage("collect")
+        if performance.added then
+            Runtime:removeEventListener("enterFrame", performance.labelUpdater)
+            performance.added = false
+            self.alpha = 0.05
         else
-            Runtime:addEventListener('enterFrame', _M.labelUpdater)
-            _M.added = true
-		memory.alpha = 1
+            Runtime:addEventListener("enterFrame", performance.labelUpdater)
+            performance.added = true
+            self.alpha = 1
         end
     end
-    memory:addEventListener('tap', memory)
+
+    memory:addEventListener("tap", onTap)
     return memory
 end
- 
-function _M.labelUpdater(event)
+
+function performance.labelUpdater()
     local curTime = sGetTimer()
-    _M.text.text = tostring(mFloor( 1000 / (curTime - prevTime))) .. ' ' ..
-            tostring(mFloor(sGetInfo('textureMemoryUsed') * 0.0001) * 0.01) .. ' ' ..
-            tostring(mFloor(collectgarbage('count')))
-    _M.text:toFront()
+    if curTime == prevTime then
+        return
+    end
+
+    local frame = mFloor(1000 / (curTime - prevTime))
+    local textureMemory = mFloor(sGetInfo("textureMemoryUsed") * 0.0001) * 0.01
+    local luaMemory = mFloor(collectgarbage("count"))
+
+    performance.text.text = string.format("%02d %05.2f %03d", frame, textureMemory, luaMemory)
+    performance.text:toFront()
     prevTime = curTime
 end
- 
-function _M:newPerformanceMeter()
-    self.text = createText(self)
-    Runtime:addEventListener('enterFrame', _M.labelUpdater)
+
+function performance.newPerformanceMeter()
+    performance.text = createText()
+    Runtime:addEventListener("enterFrame", performance.labelUpdater)
 end
- 
-return _M
+
+return performance

@@ -1,789 +1,618 @@
-local composer = require( "composer" )
+local composer = require("composer")
 
 local scene = composer.newScene()
 
--- -----------------------------------------------------------------------------------------------------------------
--- All code outside of the listener functions will only be executed ONCE unless "composer.removeScene()" is called
--- -----------------------------------------------------------------------------------------------------------------
+local lib = require("libs.app5iveLib")
+local screen = require("libs.screen")
+local widget = require("widget")
+local lfs = require("lfs")
 
-local lib 				= require("libs.app5iveLib")
-local screen 			= require( "libs.screen")
-local lfs = require( "lfs" )
-display.setDefault( "background", lib.convertHexToRGB("#ECECEC") )
--- Local forward references should go here
-local GRID_WIDTH = 2
-local GRID_HEIGHT = 2
-local CELL_WIDTH = 80
-local CELL_HEIGHT = 80
-local CELL_SPACING = 2
-local Y_OFFSET = 0
+local BACKGROUND_COLOR = lib.convertHexToRGB("#ECECEC")
+local PRIMARY_TEXT_COLOR = lib.convertHexToRGB("#1e1e1e")
+local ACCENT_TEXT_COLOR = lib.convertHexToRGB("#0A579B")
+local GRID_ASSET_PATH = "images/grid/grey/"
+local PIECE_ASSET_PATH = "images/"
+local GRID_SPACING = 2
+local DEFAULT_CELL_SIZE = 80
+local DEFAULT_TARGET = 0
+local SCROLL_WIDTH = 260
+local SCROLL_HEIGHT = 360
 
-local MK_GRID_WIDTH, MK_GRID_HEIGHT
-local backgroundGroup = display.newGroup( )
-local gridGroup = display.newGroup( )
-local objectsGroup = display.newGroup( )
-local uiGroup = display.newGroup( )
-local gridHolder = display.newGroup()
-local piecesGroup = display.newGroup()
-local bounds
-local margin = 10
-local levels = {}
-local grid = {}
-local pieces = {}
-local finishes = 0
-local floating
---system.activate("mouse")
-local currentLevel = {}
-local levelNumber = 0
-
-local widthField 
-local heightField
-
--- Functions
-
-local lfs = require( "lfs" )
-local spawnPiece
-
--- "scene:create()"
-function scene:create( event )
-
-    local sceneGroup = self.view
-    sceneGroup:insert(backgroundGroup)
-    sceneGroup:insert(gridGroup)
-    sceneGroup:insert(objectsGroup)
-    sceneGroup:insert(uiGroup)
-
---    local cursor = display.newImage( uiGroup, "images/cursor.png",  1,1)
-
-function print_r ( t )  
-    local print_r_cache={}
-    local function sub_print_r(t,indent)
-        if (print_r_cache[tostring(t)]) then
-            print(indent.."*"..tostring(t))
-        else
-            print_r_cache[tostring(t)]=true
-            if (type(t)=="table") then
-                for pos,val in pairs(t) do
-                    local posStr = tostring(pos)
-                    if (type(val)=="table") then
-                        print(indent.."["..posStr.."] => "..tostring(t).." {")
-                        sub_print_r(val,indent..string.rep(" ",#posStr+8))
-                        print(indent..string.rep(" ",#posStr+6).."}")
-                    elseif (type(val)=="string") then
-                        print(indent.."["..posStr..'] => "'..val..'"')
-                    else
-                        print(indent.."["..posStr.."] => "..tostring(val))
-                    end
-                end
-            else
-                print(indent..tostring(t))
-            end
-        end
-    end
-    if (type(t)=="table") then
-        print(tostring(t).." {")
-        sub_print_r(t,"  ")
-        print("}")
-    else
-        sub_print_r(t,"  ")
-    end
-    print()
-end
-
-local level = { 
-   {type="config", gw=2, gh=2, cw=80, ch=80, target=2},
-   {type="finish", x=2, y=2 },
-   {type="moveable", x=1, y=1 },
+local PIECES = {
+    { type = "finish", image = "finish.png" },
+    { type = "moveable", image = "yellow_ball.png" },
+    { type = "nomove", image = "nomove.png" },
+    { type = "push", image = "push.png" },
+    { type = "dumb", image = "dumb.png" },
+    { type = "blueTp", image = "blueTp.png" },
+    { type = "whiteTp", image = "whiteTp.png" },
+    { type = "delete", image = "delete.png" },
+    { type = "upArrow", image = "upArrow.png" },
+    { type = "rightArrow", image = "rightArrow.png" },
+    { type = "downArrow", image = "downArrow.png" },
+    { type = "leftArrow", image = "leftArrow.png" },
 }
 
-local function generateLevelFile(  )
-	-- Data (string) to write
-	print( "saving data" )
-	--print_r(currentLevel)
-	local gw, gh
+local state = {
+    groups = {},
+    grid = {},
+    pieces = {},
+    pieceByCell = {},
+    selectedPieceType = PIECES[1].type,
+    levelNumber = 1,
+    levelFiles = {},
+    textFields = {},
+    scrollView = nil,
+    width = 2,
+    height = 2,
+    target = DEFAULT_TARGET,
+    cellWidth = DEFAULT_CELL_SIZE,
+    cellHeight = DEFAULT_CELL_SIZE,
+}
 
-			gw = widthField.text
-			gh = heightField.text
-
-			print( gw, gh )
-
-			print( "target: "..targetField.text )
-	local dataStart = "local level = { \n   {type=\"config\", gw="..gw..", gh="..gh..", cw=80, ch=80, target=".. targetField.text .."},\n"
-	local s = ""
-	for i=1,piecesGroup.numChildren do
-		print( piecesGroup[i].yPos )
-		local piece = piecesGroup[i]
-		--if piece.type ~= "config" then
-			print( piece.type )
-			s = s .. "   {type=\"" .. piece.type .. "\", x="..piece["xPos"]..", y="..piece["yPos"].." },\n"
-		--end
-		
-	end
-
-	local dataEnd = "}\nreturn level"
-
-	local saveData = dataStart .. s .. dataEnd
-	
-	-- Path for the file to write
-	local path = system.pathForFile( "level".. levelNumber ..".lua", system.DocumentsDirectory )
-
-	-- Open the file handle
-	local file, errorString = io.open( path, "w+" )
-
-	if not file then
-    -- Error occurred; output the cause
-    print( "File error: " .. errorString )
-	else
-    -- Write data to file
-    file:write( saveData )
-    -- Close the file handle
-    io.close( file )
-end
-
-file = nil
-end
-
-    local blueBg = display.newRect( backgroundGroup, screen.centerX, screen.centerY, 700, 650 )
-    blueBg:setFillColor( lib.convertHexToRGB("#0A579B") )
-
-
-
-    local function makeGrid(width, height)
-
-		finishes = 0
-
-		--
-		-- Create a 2D array to hold our objects.
-		pieces = {}
-		GRID_WIDTH, GRID_HEIGHT = width, height
-		removeAllFromGroup(gridHolder)
-		removeAllFromGroup(piecesGroup)
-		
-		for x=1, GRID_WIDTH do
-		    grid[x] = {}
-		    for y=1, GRID_HEIGHT do
-		    	local xPos, yPos = (x-1) * (CELL_WIDTH + CELL_SPACING), (y-1) * (CELL_HEIGHT + CELL_SPACING)
-		    	--grid[x][y] = display.newRect( xPos, yPos, CELL_WIDTH, CELL_HEIGHT )
-
-		    	local bgPiece = "topLeft"
-
-		    	if x == GRID_WIDTH and y == 1 then
-		    		bgPiece = "topRight"
-		    	elseif x == 1 and y == GRID_HEIGHT then
-		    		bgPiece = "bottomLeft"
-		    	elseif x == GRID_WIDTH and y == GRID_HEIGHT then
-		    		bgPiece = "bottomRight"
-		    	elseif x > 1 and x < GRID_WIDTH and y == 1 then
-		    		bgPiece = "top"
-		    	elseif x > 1 and x < GRID_WIDTH and y == GRID_HEIGHT then
-		    		bgPiece = "bottom"
-		    	elseif x == 1 and y > 1 and y < GRID_HEIGHT then
-		    		bgPiece = "left"
-		    	elseif x == GRID_WIDTH and y > 1 and y < GRID_HEIGHT then
-		    		bgPiece = "right"
-		    	elseif x > 1 and x < GRID_WIDTH and y > 1 and y < GRID_HEIGHT then
-		    		bgPiece = "middle"
-		    	end 
-
-		    	grid[x][y] = display.newImageRect(gridHolder, "images/grid/grey/".. bgPiece ..".png", CELL_WIDTH, CELL_HEIGHT )
-		    	grid[x][y].x, grid[x][y].y = xPos, yPos
-		        grid[x][y].hasPiece = false
-		        grid[x][y].type = "empty"
-		        gridHolder:insert(grid[x][y])
-		        grid[x][y].status = display.newText(gridHolder, tostring(grid[x][y].type), xPos, yPos, native.systemFont, 10 )
-		        grid[x][y].status.alpha = 0
-				local function onObjectTouch( event )
-				    if ( event.phase == "began" ) then
-				        --print( "Touch event began on: " .. x, y )
-				        --spawnPiece(x,y)
-				        if floating and floating.type == "delete" then
-				        	print( "remove piece" )
-				        	removePiece(x,y)
-				        elseif floating then
-				        	print( "spawnPiece:",x,y )
-				        	spawnPiece(x, y, floating.type)
-				        	
-				        end
-				    elseif ( event.phase == "ended" ) then
-				        --print( "Touch event ended on: " .. x,y )
-				        --print_r(  pieces )
-				    end
-				    return true
-				end
-				grid[x][y]:addEventListener( "touch", onObjectTouch )
-		    end
-		end
-
-
-
-		gridHolder.anchorX = 0.5
-		gridHolder.anchorY = 0.5
-		gridHolder.anchorChildren = true
-
-		gridHolder.x = blueBg.x 
-		gridHolder.y = blueBg.y --screen.bottom - Y_OFFSET
-
-		gridHolder:insert(piecesGroup)
-		gridGroup:insert( gridHolder )
-	    bounds = gridGroup.contentBounds 	
+local function clearGroup(group)
+    if not group then
+        return
     end
-   
+    while group.numChildren > 0 do
+        local child = group[1]
+        child:removeSelf()
+    end
+end
 
+local function keyForCell(x, y)
+    return string.format("%d:%d", x, y)
+end
 
+local function updateConfig()
+    state.config = {
+        type = "config",
+        gw = state.width,
+        gh = state.height,
+        cw = state.cellWidth,
+        ch = state.cellHeight,
+        target = state.target,
+    }
+end
 
+local function rebuildPieceData()
+    local data = {}
+    for _, piece in pairs(state.pieces) do
+        data[#data + 1] = {
+            type = piece.type,
+            x = piece.gridX,
+            y = piece.gridY,
+        }
+    end
+    table.sort(data, function(a, b)
+        if a.y == b.y then
+            return a.x < b.x
+        end
+        return a.y < b.y
+    end)
+    state.levelData = { state.config }
+    for _, row in ipairs(data) do
+        state.levelData[#state.levelData + 1] = row
+    end
+end
 
+local function removePieceAt(x, y)
+    local key = keyForCell(x, y)
+    local piece = state.pieceByCell[key]
+    if not piece then
+        return
+    end
+    piece:removeSelf()
+    state.pieceByCell[key] = nil
+    state.pieces[piece.id] = nil
+    rebuildPieceData()
+end
 
+local function spawnPieceAt(x, y, pieceType)
+    local assets = PIECE_ASSET_PATH .. pieceType .. ".png"
+    removePieceAt(x, y)
 
-	local function handlerFunction( event )
+    local piece = display.newImageRect(state.groups.pieces, assets, state.cellWidth * 0.6, state.cellHeight * 0.6)
+    if not piece then
+        return
+    end
 
+    local cell = state.grid[x][y]
+    piece.x, piece.y = cell.x, cell.y
+    piece.gridX, piece.gridY = x, y
+    piece.type = pieceType
+    piece.id = system.getTimer() .. keyForCell(x, y)
+    state.pieces[piece.id] = piece
+    state.pieceByCell[keyForCell(x, y)] = piece
 
-	    if ( event.phase == "began" ) then
-	        -- user begins editing defaultField
-	        --print( event.text )
+    if pieceType == "moveable" then
+        piece.width = piece.width / 5
+        piece.height = piece.height / 5
+        transition.scaleTo(piece, {
+            delay = 100,
+            xScale = 5,
+            yScale = 5,
+            time = 400,
+            transition = easing.outElastic,
+        })
+    end
 
-	    elseif ( event.phase == "ended" or event.phase == "submitted" ) then
-	        -- do something with defaultField text
-	        --print( event.target.text, "ended" )
-	        if event.target.type == "widthField" then
-	        	MK_GRID_WIDTH = tonumber(event.target.text)
-	        elseif event.target.type == "heightField" then
-	        	MK_GRID_HEIGHT = tonumber(event.target.text)
-	        end	        
+    rebuildPieceData()
+end
 
-	    elseif ( event.phase == "editing" ) then
-	        --print( event.text )
-	        if event.target.type == "widthField" then
-	        	MK_GRID_WIDTH = event.target.text
-	        elseif event.target.type == "heightField" then
-	        	MK_GRID_HEIGHT = event.target.text
-	        end	 
+local function deselectPalette()
+    if state.selectedPalette then
+        state.selectedPalette:setFillColor(1, 1, 1)
+        state.selectedPalette = nil
+    end
+end
 
-	    end  
-	end
+local function selectPalette(rect, pieceType)
+    deselectPalette()
+    state.selectedPalette = rect
+    state.selectedPalette:setFillColor(lib.convertHexToRGB("#F5A623"))
+    state.selectedPieceType = pieceType
+end
 
-	local builMapGroup = display.newGroup( )
-
-	widthField = native.newTextField( blueBg.x, blueBg.y-blueBg.height/2-30, 60, 36 )
-	widthField.anchorX = 0
-	widthField.inputType = "number"
-	widthField.type = "widthField"
-	widthField.text = 2
-
-	widthField:addEventListener( "userInput", handlerFunction )
-
-	heightField = native.newTextField(  widthField.x+widthField.width+margin, widthField.y, 60, 36 )
-	heightField.anchorX = 0
-	heightField.inputType = "number"
-	heightField.type = "heightField"
-	heightField.text = 2
-
-	heightField:addEventListener( "userInput", handlerFunction )
-	MK_GRID_WIDTH, MK_GRID_HEIGHT = tonumber(widthField.text), tonumber(heightField.text)
-	builMapGroup:insert(widthField); builMapGroup:insert(heightField)
-
-	local buildMapButton = display.newText( builMapGroup, "Build/Rebuild", heightField.x+heightField.width+margin, heightField.y, native.systemFontBold, 20 )
-	buildMapButton.anchorX = 0
-	buildMapButton:setFillColor( lib.convertHexToRGB("#1e1e1e") )
-	buildMapButton.touch = function( self, event )
-		if event.phase == "began" then
-				currentLevel = {}
-				makeGrid(MK_GRID_WIDTH, MK_GRID_HEIGHT)			
-				elseif event.phase == "ended" then
-			end
-		end
-
-	buildMapButton:addEventListener( "touch", buildMapButton )	
-
-	builMapGroup.anchorChildren = true
-	builMapGroup.anchorY = 1
-
-	builMapGroup.x, builMapGroup.y = screen.centerX, blueBg.y-blueBg.height/2-margin
-
-
-
-	local targetText = display.newText( builMapGroup, "Target: ", buildMapButton.x+buildMapButton.width+margin*10, buildMapButton.y, native.systemFontBold, 20 )
-	targetText.anchorX = 0
-	targetText:setFillColor( lib.convertHexToRGB("#1e1e1e") )
-
-	targetField = native.newTextField(  targetText.x-100, targetText.y, 60, 36 )
-	targetField.anchorX = 0
-	targetField.inputType = "number"
-	targetField.type = "heightField"
-	targetField.text = 0
-
-	targetField:addEventListener( "userInput", handlerFunction )
-
-
-
-
-
-	local xHighlight = display.newRect( uiGroup, screen.centerX, screen.centerY, blueBg.width, CELL_HEIGHT )
-	local yHighlight = display.newRect( uiGroup, screen.centerX, screen.centerY, CELL_WIDTH, blueBg.height )
-
-	xHighlight.alpha = 0.3
-	yHighlight.alpha = 0.3
-
-	local levelsDisplayText = display.newText( builMapGroup, "Levels", 10, 60, native.systemFontBold, 28 )
-	levelsDisplayText.anchorX, levelsDisplayText.anchorY = 0, 1
-	levelsDisplayText:setFillColor( lib.convertHexToRGB("#0A579B") )
-	uiGroup:insert(levelsDisplayText)
-
-	local levelNumberField = native.newTextField( levelsDisplayText.x + levelsDisplayText.width+margin , levelsDisplayText.y, 60, 36 )
-	levelNumberField.anchorX, levelNumberField.anchorY = 0, 1
-	levelNumberField.inputType = "number"
-	levelNumberField.type = "levelNumberField"
-	levelNumberField.text = levelNumber
-
-	widthField:addEventListener( "userInput", handlerFunction )	
-	
-	local addLevelButton = display.newText( uiGroup, "+", levelNumberField.x + levelNumberField.width+margin*2 , levelNumberField.y, native.systemFontBold, 30 )
-	addLevelButton:setFillColor( lib.convertHexToRGB("#1e1e1e") )
-	addLevelButton.anchorX, addLevelButton.anchorY = 0, 1
-	addLevelButton.touch = function( self, event )
-		if event.phase == "began" then
-				--generateLevelFile()
-				print( "add level" )
-				levelNumber = levelNumber + 1	
-				levelNumberField.text = levelNumber
-				elseif event.phase == "ended" then
-			end
-		end
-
-	addLevelButton:addEventListener( "touch", addLevelButton )	
-
-
-	local saveText = display.newText( uiGroup, "save", addLevelButton.x + addLevelButton.width+margin*2 , addLevelButton.y, native.systemFontBold, 30 )
-	saveText:setFillColor( lib.convertHexToRGB("#1e1e1e") )
-	saveText.anchorX, saveText.anchorY = 0, 1
-	saveText.touch = function( self, event )
-		if event.phase == "began" then
-				generateLevelFile()		
-				elseif event.phase == "ended" then
-			end
-		end
-
-	saveText:addEventListener( "touch", saveText )		
-	 
-
- 
-
-
-	local function onMouseMove( event )
-		-- body
-		--if event.phase == "began" then
-			--print( event.x )
-
-
-		if floating ~= nil then
-			floating.x, floating.y = event.x, event.y
-		end
-
-    if event.isPrimaryButtonDown then
-        -- The mouse's primary/left button is currently pressed down.
-        --print( "mouse left click" )
+local function onCellTouch(event)
+    if event.phase ~= "began" then
+        return true
+    end
+    local cell = event.target
+    if not state.selectedPieceType then
+        return true
+    end
+    if state.selectedPieceType == "delete" then
+        removePieceAt(cell.gridX, cell.gridY)
     else
-        -- The mouse's primary/left button is not being pressed.
+        spawnPieceAt(cell.gridX, cell.gridY, state.selectedPieceType)
     end
-		if(event.x < bounds.xMin) or
-        (event.x > bounds.xMax) or
-        (event.y < bounds.yMin) or
-        (event.y > bounds.yMax) then
-        
-        	xHighlight.alpha, yHighlight.alpha = 0.01, 0.01
-
-        else 
-
-        	xHighlight.alpha, yHighlight.alpha = 0.05, 0.05
-        	xHighlight.y, yHighlight.x = event.y, event.x
-        end	
-		--end
-		if event.phase == "ended" then
-			print( "event ended" )
-		end
-
-
-	end
-
-	Runtime:addEventListener("mouse", onMouseMove)
-
-	 function spawnPiece(xPos, yPos, pieceType)
-		--pieces = {}
-		if xPos < 1 or xPos > GRID_WIDTH or yPos < 1 or yPos > GRID_HEIGHT then
-			print( "Position out of range:", xPos, yPos )
-			return nil
-		end
-
-
-		local object = "yellow_ball"
-
-		if pieceType == "finish" then
-			object = "finish"
-			finishes = finishes + 1
-		elseif pieceType == "nomove" then
-			object = "nomove"
-		elseif pieceType == "push" then
-			object = "push"
-		elseif pieceType == "dumb" then
-			object = "dumb"	
-		elseif pieceType == "blueTp" then
-			object = "blueTp"
-		elseif pieceType == "whiteTp" then
-			object = "whiteTp"	
-		elseif pieceType == "upArrow" then
-			object = "upArrow"
-		elseif pieceType == "rightArrow" then
-			object = "rightArrow"
-		elseif pieceType == "downArrow" then
-			object = "downArrow"
-		elseif pieceType == "leftArrow" then
-			object = "leftArrow"				
-		end
-
-		local piece = display.newImageRect( piecesGroup, "images/"..object ..".png", CELL_WIDTH*.6, CELL_HEIGHT*.6 )
-		piece.x = grid[xPos][yPos].x
-		piece.y =	grid[xPos][yPos].y
-		piece.xPos, piece.yPos = xPos, yPos
-		piece.type = pieceType
-	-- O>M = object.movable
-		grid[xPos][yPos].type = pieceType
-		local data = {type=pieceType, x=xPos, y=yPos}
-		table.insert( currentLevel, data )
-		grid[xPos][yPos].hasPiece = true
-
-		local thisTransition =  easing.outBack
-		local thisTime = 100
-
-		if pieceType == "finish" then
-			grid[xPos][yPos].finish = true
-		elseif pieceType == "nomove" then
-		elseif pieceType == "push" then
-			grid[xPos][yPos].hasPiece = true		
-
-		elseif pieceType == "dumb" then
-			grid[xPos][yPos].hasPiece = true
-			piece.width, piece.height = piece.width/1.2, piece.height/1.2
-		elseif pieceType == "moveable" then
-			grid[xPos][yPos].hasPiece = true
-			piece.width, piece.height = piece.width, piece.height
-			
-		end
-		--return piece
-	end	
-
-function removePiece(xPos, yPos)
-
-	if grid[xPos][yPos] then
-		local removedType = grid[xPos][yPos].type
-		for j = piecesGroup.numChildren, 1, -1 do
-			local piece = piecesGroup[j]
-			if piece and piece.xPos and piece.yPos and xPos == piece.xPos and yPos == piece.yPos then
-				piece:removeSelf()
-			end
-		end
-
-		if removedType == "finish" and finishes > 0 then
-			finishes = finishes - 1
-		end
-
-		grid[xPos][yPos].hasPiece = false
-		grid[xPos][yPos].finish = nil
-		grid[xPos][yPos].type = "empty"
-		grid[xPos][yPos].type2 = nil
-
-		if currentLevel then
-			for i = #currentLevel, 1, -1 do
-				local entry = currentLevel[i]
-				if type(entry) == "table" and entry.x == xPos and entry.y == yPos and entry.type ~= "config" then
-					table.remove(currentLevel, i)
-				end
-			end
-		end
-	end	
-
+    return true
 end
 
-function removeAllFromGroup( group )
-				--print( "removing all ", group.numChildren )
-	while group.numChildren > 0 do
-		local child = group[1]
-        if child then child:removeSelf() end
-        	--print("group.numChildren" , group.numChildren )
-		end	
+local function buildGrid()
+    clearGroup(state.groups.grid)
+    clearGroup(state.groups.pieces)
+    state.grid = {}
+    state.pieces = {}
+    state.pieceByCell = {}
 
+    local holder = state.groups.gridHolder
+    holder.x = screen.centerX
+    holder.y = screen.centerY - 40
 
+    local width = state.width
+    local height = state.height
+    local cw = state.cellWidth
+    local ch = state.cellHeight
+
+    for x = 1, width do
+        state.grid[x] = {}
+        for y = 1, height do
+            local asset = "middle"
+            if x == 1 and y == 1 then
+                asset = "topLeft"
+            elseif x == width and y == 1 then
+                asset = "topRight"
+            elseif x == 1 and y == height then
+                asset = "bottomLeft"
+            elseif x == width and y == height then
+                asset = "bottomRight"
+            elseif y == 1 then
+                asset = "top"
+            elseif y == height then
+                asset = "bottom"
+            elseif x == 1 then
+                asset = "left"
+            elseif x == width then
+                asset = "right"
+            end
+
+            local gridImage = display.newImageRect(holder, GRID_ASSET_PATH .. asset .. ".png", cw, ch)
+            gridImage.x = (x - 1) * (cw + GRID_SPACING)
+            gridImage.y = (y - 1) * (ch + GRID_SPACING)
+            gridImage.gridX = x
+            gridImage.gridY = y
+            gridImage:addEventListener("touch", onCellTouch)
+            state.grid[x][y] = gridImage
+        end
+    end
+
+    holder.anchorChildren = true
+    holder.anchorX = 0.5
+    holder.anchorY = 0.5
+
+    updateConfig()
+    rebuildPieceData()
 end
 
- function loadLevel( thisLevel )
- 		print( "load Level", thisLevel )
- 		local thisLevel = thisLevel
-		for i = 1, #thisLevel do
-			
-
-			if thisLevel[i].type == "config" then
-				MK_GRID_WIDTH, MK_GRID_HEIGHT = thisLevel[i].gw, thisLevel[i].gh
-				widthField.text, heightField.text, targetField.text = MK_GRID_WIDTH, MK_GRID_HEIGHT, thisLevel[i].target
-			else
-				--event.localPlayerScore
-				 spawnPiece(thisLevel[i]["x"], thisLevel[i]["y"], thisLevel[i]["type"])
-				--table.insert(pieces, piece)
-			end
-		end	
-		currentLevel = {}
-		currentLevel = nil
-		currentLevel = {thisLevel}
-
-		print_r(currentLevel)
-
-
-		gridHolder.anchorX = 0.5
-		gridHolder.anchorY = 0.5
-		gridHolder.anchorChildren = true
-
-		gridHolder.x = blueBg.x 
-		gridHolder.y = blueBg.y --screen.bottom - Y_OFFSET
-
-end
-
-
-	local widget = require( "widget" )
-
-	-- ScrollView listener
-	local function scrollListener( event )
-
-	    local phase = event.phase
-	    if ( phase == "began" ) then --print( "Scroll view was touched" )
-	    elseif ( phase == "moved" ) then --print( "Scroll view was moved" )
-	    elseif ( phase == "ended" ) then --print( "Scroll view was released" )
-	    end
-
-	    -- In the event a scroll limit is reached...
-	    if ( event.limitReached ) then
-	        if ( event.direction == "up" ) then --print( "Reached bottom limit" )
-	        elseif ( event.direction == "down" ) then --print( "Reached top limit" )
-	        elseif ( event.direction == "left" ) then --print( "Reached right limit" )
-	        elseif ( event.direction == "right" ) then --print( "Reached left limit" )
-	        end
-	    end
-
-	    return true
-	end
-
-	-- Create the widget
-	local scrollView = widget.newScrollView(
-	    {
-	        top = 75,
-	        left = 0,
-	        width = 300,
-	        height = 400,
-	        scrollWidth = 600,
-	        scrollHeight = 800,
-	        listener = scrollListener
-	    }
-	)
-
-	
-	--scrollView:insert( test )
-	-- Create a image and insert it into the scroll view
-	-- background = display.newImageRect( "assets/scrollimage.png", 768, 1024 )
-	--scrollView:insert( background )
-	local doc_path = system.pathForFile( "levels")
-	
-	local scrollMargin = margin
-
-	local bgdark = false
-
-	for file in lfs.dir( doc_path ) do
-	    -- File is the current file or directory name
-	    if string.match(file, "level") then
-		    print( "Found file: " .. file )
-		    table.insert( levels, file )
-		    local levelHolder = display.newGroup( )
-		    local levelBG = display.newRect( levelHolder, 3, 20+scrollMargin, 200, 36 )
-		    levelBG.file = file
-		    levelBG.anchorX, levelBG.anchorY = 0, 1
-		    levelBG:setFillColor( lib.convertHexToRGB("#0A579B") )
-		    local fileText = file:gsub("%.lua", "")
-		    local level = display.newText( levelHolder, fileText, levelBG.x+margin, levelBG.y-5, native.systemFontBold, 20 )
-		    level.anchorX, level.anchorY = 0, 1
-		    if not bgdark then
-		    	levelBG.alpha = 0.01
-		    	bgdark = true
-		    	levelBG.type = tostring( bgdark )
-		    else
-		    	levelBG.alpha = 0.1
-		    	bgdark = false
-		    end
-			local function onObjectTouch( self, event )
-			    --if ( event.phase == "began" ) then
-		    		local levelFile = event.target.file
-		    		levelFile = levelFile:gsub("%.lua", "")
-		    			print( #currentLevel )
-					  for i=1, #currentLevel do
-					    --currentLevel[i]:removeSelf()
-					    -- Can also use: objectsOnScreen[i].isVisible = false
-					    --currentLevel[i] = nil
-					    print( "nill out" )
-					  end
-					  --currentLevel = {}
-					--currentLevel = nil		    		
-		    		local thisLevel = require( "levels.".. levelFile)
-		    		print( "thisLevel: ", #thisLevel )
-		    		print_r(thisLevel)	
-		    		levelNumberField.text = levelFile:gsub("%level", "")
-		    		levelNumber = tonumber( levelNumberField.text )
-		    		--currentLevel = {}
-		    		if thisLevel[1] then
-		    		
-		    		--currentLevel = nil
-		    		
-		    		print_r(thisLevel)
-		    		makeGrid(thisLevel[1].gw, thisLevel[1].gh)	
-
-		    		loadLevel(thisLevel)
-
-		    		end			        
-			    --end
-			    --return true
-			end 
-
-			levelBG.touch = onObjectTouch
-			levelBG:addEventListener( "touch", levelBG )		    
-		    
-
-		    level:setFillColor(lib.convertHexToRGB("#1e1e1e"))
-		    levelHolder.anchorX, levelHolder.anchorY = 0, 1
-		    levelHolder.filename = file
-		    scrollView:insert( levelHolder )
-		    builMapGroup:insert(scrollView)
-		    scrollMargin = levelHolder.height + scrollMargin
-		end
-	end
-
-	uiGroup:insert(scrollView)
-
-	makeGrid(MK_GRID_WIDTH, MK_GRID_HEIGHT)
-
-local function addPiceToMouse(type, image)
-	if floating then floating:removeSelf( ) end
-	floating = display.newImageRect( uiGroup, "images/"..image, 40, 40 )
-	floating.x, floating.y = 1,1
-	floating.type = type
-end	
-
--------- 	RIGHT SIDE
-	local rightSide = display.newRect( uiGroup, blueBg.x+blueBg.width/2, blueBg.y-blueBg.height/2 , 200, blueBg.height )
-	rightSide.anchorX, rightSide.anchorY = 0, 0
-	rightSide:setFillColor( lib.convertHexToRGB("#1e1e1e") )
-	local piecesLocal = {
-							{ type="finish", image="finish.png" },
-							{ type="moveable", image="yellow_ball.png" },
-							{ type="nomove", image="nomove.png" },
-							{ type="push", image="push.png" },
-							{ type="dumb", image="dumb.png" },
-							{ type="blueTp", image="blueTp.png" },
-							{ type="whiteTp", image="whiteTp.png" },
-							{ type="delete", image="delete.png" },
-							{ type="upArrow", image="upArrow.png" },
-							{ type="rightArrow", image="rightArrow.png" },
-							{ type="downArrow", image="downArrow.png" },
-							{ type="leftArrow", image="leftArrow.png" },
-						}
-
-local yLocation = 30
-	for i = 1, #piecesLocal do
-		local piece = piecesLocal[i]
-		local icon = display.newImageRect( "images/".. piece.image, 40, 40 )
-		icon.type = piece.type
-		icon.image = piece.image
-		icon.x, icon.y = rightSide.x+rightSide.width/2, rightSide.y+margin + yLocation
-		yLocation = yLocation + 60
-		icon.touch = function(self, event)
-			if event.phase == "began" then
-				print( "touch", self.type )
-				addPiceToMouse(self.type, self.image)
-			end
-		end
-		icon:addEventListener( "touch", icon )
-	end
-
-	local function enterFrame( )
-	end
-
-	Runtime:addEventListener("enterFrame", enterFrame )
-	-- Called when a key event has been received
-	local function onKeyEvent( event )
-	    -- Print which key was pressed down/up
-	    local message = "Key '" .. event.keyName .. "' was pressed " .. event.phase
-	    print( message )
-
-	    -- If the "back" key was pressed on Android or Windows Phone, prevent it from backing out of the app
-	    if ( event.keyName == "back" ) then
-	        local platformName = system.getInfo( "platformName" )
-	        if ( platformName == "Android" ) or ( platformName == "WinPhone" ) then
-	            return true
-	        end
-	    end
-
-	    -- IMPORTANT! Return false to indicate that this app is NOT overriding the received key
-	    -- This lets the operating system execute its default handling of the key
-	    return false
-	end
-
-	-- Add the key event listener
-	Runtime:addEventListener( "key", onKeyEvent )
-
-end
-
-
--- "scene:show()"
-function scene:show( event )
-
-    local sceneGroup = self.view
-    local phase = event.phase
-
-    if ( phase == "will" ) then
-        -- Called when the scene is still off screen (but is about to come on screen)
-    elseif ( phase == "did" ) then
-       
+local function clampDimensions()
+    if state.width < 2 then
+        state.width = 2
+    end
+    if state.height < 2 then
+        state.height = 2
+    end
+    if state.width > 10 then
+        state.width = 10
+    end
+    if state.height > 10 then
+        state.height = 10
     end
 end
 
-
--- "scene:hide()"
-function scene:hide( event )
-
-    local sceneGroup = self.view
-    local phase = event.phase
-
-    if ( phase == "will" ) then
-        -- Called when the scene is on screen (but is about to go off screen)
-        -- Insert code here to "pause" the scene
-        -- Example: stop timers, stop animation, stop audio, etc.
-    elseif ( phase == "did" ) then
-        -- Called immediately after scene goes off screen
+local function updateFieldValues()
+    if state.textFields.width then
+        state.textFields.width.text = tostring(state.width)
+    end
+    if state.textFields.height then
+        state.textFields.height.text = tostring(state.height)
+    end
+    if state.textFields.target then
+        state.textFields.target.text = tostring(state.target)
+    end
+    if state.textFields.levelNumber then
+        state.textFields.levelNumber.text = tostring(state.levelNumber)
     end
 end
 
+local function refreshPalette()
+    clearGroup(state.groups.palette)
+    local padding = 12
+    local size = 44
+    local y = padding
+    for _, item in ipairs(PIECES) do
+        local rect = display.newRect(state.groups.palette, 0, y, size, size)
+        rect.anchorX, rect.anchorY = 0, 0
+        rect.strokeWidth = 2
+        rect:setFillColor(1, 1, 1)
+        rect:setStrokeColor(lib.convertHexToRGB("#1e1e1e"))
 
--- "scene:destroy()"
-function scene:destroy( event )
+        local icon = display.newImageRect(
+            state.groups.palette,
+            PIECE_ASSET_PATH .. item.image,
+            size * 0.75,
+            size * 0.75
+        )
+        icon.x = rect.x + size * 0.5
+        icon.y = rect.y + size * 0.5
 
-    local sceneGroup = self.view
+        rect:addEventListener("touch", function(event)
+            if event.phase == "began" then
+                selectPalette(rect, item.type)
+            end
+            return true
+        end)
 
-    -- Called prior to the removal of scene's view
-    -- Insert code here to clean up the scene
-    -- Example: remove display objects, save state, etc.
+        if state.selectedPieceType == item.type then
+            selectPalette(rect, item.type)
+        end
+
+        y = y + size + padding
+    end
 end
 
+local function saveLevel()
+    rebuildPieceData()
+    local levelNumber = state.levelNumber
+    if levelNumber <= 0 then
+        return
+    end
 
--- -------------------------------------------------------------------------------
+    local lines = {}
+    lines[#lines + 1] = "local level = {"
+    for _, row in ipairs(state.levelData) do
+        local segments = {}
+        for key, value in pairs(row) do
+            if type(value) == "string" then
+                segments[#segments + 1] = string.format("%s=\"%s\"", key, value)
+            else
+                segments[#segments + 1] = string.format("%s=%s", key, tostring(value))
+            end
+        end
+        lines[#lines + 1] = string.format("   { %s },", table.concat(segments, ", "))
+    end
+    lines[#lines + 1] = "}"
+    lines[#lines + 1] = "return level"
 
--- Listener setup
-scene:addEventListener( "create", scene )
-scene:addEventListener( "show", scene )
-scene:addEventListener( "hide", scene )
-scene:addEventListener( "destroy", scene )
+    local content = table.concat(lines, "\n")
+    local path = system.pathForFile("level" .. levelNumber .. ".lua", system.DocumentsDirectory)
+    local file = io.open(path, "w+")
+    if not file then
+        print("[editor] Unable to open file for writing:", path)
+        return
+    end
+    file:write(content)
+    file:close()
+    print("[editor] Saved", path)
+end
 
--- -------------------------------------------------------------------------------
+local function loadLevelModule(levelModule)
+    if package.loaded[levelModule] then
+        package.loaded[levelModule] = nil
+    end
+    local ok, moduleData = pcall(require, levelModule)
+    if not ok then
+        print("[editor] Failed to load level module:", levelModule, moduleData)
+        return
+    end
+    if type(moduleData) ~= "table" or not moduleData[1] then
+        print("[editor] Invalid level data:", levelModule)
+        return
+    end
+
+    local config = moduleData[1]
+    state.width = tonumber(config.gw) or state.width
+    state.height = tonumber(config.gh) or state.height
+    state.cellWidth = tonumber(config.cw) or state.cellWidth
+    state.cellHeight = tonumber(config.ch) or state.cellHeight
+    state.target = tonumber(config.target) or DEFAULT_TARGET
+    clampDimensions()
+    updateFieldValues()
+    buildGrid()
+
+    for index = 2, #moduleData do
+        local row = moduleData[index]
+        if row.type and row.x and row.y then
+            spawnPieceAt(row.x, row.y, row.type)
+        end
+    end
+end
+
+local function refreshLevelList()
+    state.levelFiles = {}
+    local levelsPath = system.pathForFile("levels", system.ResourceDirectory)
+    if not levelsPath then
+        return
+    end
+
+    for file in lfs.dir(levelsPath) do
+        if file:match("^level%d+%.lua$") then
+            state.levelFiles[#state.levelFiles + 1] = file
+        end
+    end
+    table.sort(state.levelFiles)
+
+    if state.scrollView then
+        state.scrollView:removeSelf()
+        state.scrollView = nil
+    end
+
+    local scrollView = widget.newScrollView({
+        width = SCROLL_WIDTH,
+        height = SCROLL_HEIGHT,
+        horizontalScrollDisabled = true,
+        backgroundColor = { 1, 1, 1, 0 },
+    })
+    scrollView.x = screen.left + SCROLL_WIDTH * 0.5 + 20
+    scrollView.y = screen.centerY
+    state.groups.ui:insert(scrollView)
+    state.scrollView = scrollView
+
+    local y = 20
+    for _, file in ipairs(state.levelFiles) do
+        local group = display.newGroup()
+        scrollView:insert(group)
+
+        local buttonBg = display.newRoundedRect(group, 0, y, SCROLL_WIDTH - 20, 36, 6)
+        buttonBg.anchorX, buttonBg.anchorY = 0.5, 0
+        buttonBg:setFillColor(lib.convertHexToRGB("#ECECEC"))
+        buttonBg.strokeWidth = 1
+        buttonBg:setStrokeColor(lib.convertHexToRGB("#1e1e1e"))
+
+        local label = display.newText({
+            parent = group,
+            text = file:gsub("%.lua$", ""),
+            x = buttonBg.x,
+            y = buttonBg.y + buttonBg.height * 0.5,
+            font = native.systemFontBold,
+            fontSize = 18,
+        })
+        label:setFillColor(PRIMARY_TEXT_COLOR)
+
+        local moduleName = "Puzzle Map Makers.levels." .. file:gsub("%.lua$", "")
+        buttonBg:addEventListener("touch", function(event)
+            if event.phase == "began" then
+                state.levelNumber = tonumber(file:match("%d+")) or state.levelNumber
+                updateFieldValues()
+                loadLevelModule(moduleName)
+            end
+            return true
+        end)
+
+        y = y + 44
+    end
+end
+
+local function onFieldInput(event)
+    if event.phase ~= "ended" and event.phase ~= "submitted" then
+        return
+    end
+    local value = tonumber(event.target.text)
+    if not value then
+        updateFieldValues()
+        return
+    end
+
+    if event.target.key == "width" then
+        state.width = value
+        clampDimensions()
+        buildGrid()
+    elseif event.target.key == "height" then
+        state.height = value
+        clampDimensions()
+        buildGrid()
+    elseif event.target.key == "target" then
+        state.target = math.max(0, value)
+        updateConfig()
+        rebuildPieceData()
+    elseif event.target.key == "level" then
+        state.levelNumber = math.max(1, math.floor(value + 0.5))
+    end
+    updateFieldValues()
+end
+
+local function createTextField(_parent, x, y, width, key, defaultValue)
+    local field = native.newTextField(x, y, width, 34)
+    field.anchorX = 0
+    field.text = tostring(defaultValue)
+    field.inputType = "number"
+    field.key = key
+    field:addEventListener("userInput", onFieldInput)
+    state.textFields[key] = field
+    return field
+end
+
+local function buildUI(sceneGroup)
+    local background = display.newRect(sceneGroup, screen.centerX, screen.centerY, screen.width, screen.height)
+    background:setFillColor(BACKGROUND_COLOR)
+
+    state.groups.background = sceneGroup
+    state.groups.gridHolder = display.newGroup()
+    state.groups.grid = display.newGroup()
+    state.groups.pieces = display.newGroup()
+    state.groups.ui = display.newGroup()
+    state.groups.palette = display.newGroup()
+
+    sceneGroup:insert(state.groups.gridHolder)
+    state.groups.gridHolder:insert(state.groups.grid)
+    state.groups.gridHolder:insert(state.groups.pieces)
+    sceneGroup:insert(state.groups.ui)
+    sceneGroup:insert(state.groups.palette)
+
+    state.groups.palette.x = screen.right - 120
+    state.groups.palette.y = screen.centerY - 180
+
+    local controlGroup = display.newGroup()
+    controlGroup.x = screen.centerX - 160
+    controlGroup.y = screen.top + 40
+    state.groups.ui:insert(controlGroup)
+
+    local widthLabel = display.newText({
+        parent = controlGroup,
+        text = "Width",
+        x = 0,
+        y = 0,
+        font = native.systemFontBold,
+        fontSize = 18,
+    })
+    widthLabel.anchorX = 0
+    widthLabel:setFillColor(PRIMARY_TEXT_COLOR)
+
+    createTextField(controlGroup, widthLabel.x, widthLabel.y + 20, 60, "width", state.width)
+
+    local heightLabel = display.newText({
+        parent = controlGroup,
+        text = "Height",
+        x = widthLabel.x + 80,
+        y = widthLabel.y,
+        font = native.systemFontBold,
+        fontSize = 18,
+    })
+    heightLabel.anchorX = 0
+    heightLabel:setFillColor(PRIMARY_TEXT_COLOR)
+
+    createTextField(controlGroup, heightLabel.x, heightLabel.y + 20, 60, "height", state.height)
+
+    local targetLabel = display.newText({
+        parent = controlGroup,
+        text = "Target",
+        x = heightLabel.x + 80,
+        y = heightLabel.y,
+        font = native.systemFontBold,
+        fontSize = 18,
+    })
+    targetLabel.anchorX = 0
+    targetLabel:setFillColor(PRIMARY_TEXT_COLOR)
+
+    createTextField(controlGroup, targetLabel.x, targetLabel.y + 20, 60, "target", state.target)
+
+    local levelLabel = display.newText({
+        parent = controlGroup,
+        text = "Level #",
+        x = targetLabel.x + 80,
+        y = targetLabel.y,
+        font = native.systemFontBold,
+        fontSize = 18,
+    })
+    levelLabel.anchorX = 0
+    levelLabel:setFillColor(PRIMARY_TEXT_COLOR)
+
+    createTextField(controlGroup, levelLabel.x, levelLabel.y + 20, 60, "level", state.levelNumber)
+
+    local buildButton = display.newText({
+        parent = controlGroup,
+        text = "Rebuild Grid",
+        x = widthLabel.x,
+        y = widthLabel.y + 70,
+        font = native.systemFontBold,
+        fontSize = 20,
+    })
+    buildButton.anchorX = 0
+    buildButton:setFillColor(ACCENT_TEXT_COLOR)
+    buildButton:addEventListener("touch", function(event)
+        if event.phase == "began" then
+            clampDimensions()
+            updateFieldValues()
+            buildGrid()
+        end
+        return true
+    end)
+
+    local saveButton = display.newText({
+        parent = controlGroup,
+        text = "Save",
+        x = buildButton.x + 220,
+        y = buildButton.y,
+        font = native.systemFontBold,
+        fontSize = 20,
+    })
+    saveButton.anchorX = 0
+    saveButton:setFillColor(ACCENT_TEXT_COLOR)
+    saveButton:addEventListener("touch", function(event)
+        if event.phase == "began" then
+            saveLevel()
+        end
+        return true
+    end)
+
+    refreshPalette()
+    refreshLevelList()
+end
+
+local function onSceneCreate()
+    display.setDefault("background", BACKGROUND_COLOR)
+    buildUI(scene.view)
+    clampDimensions()
+    updateFieldValues()
+    buildGrid()
+end
+
+local function onSceneShow(event)
+    if event and event.phase == "did" then
+        refreshLevelList()
+    end
+end
+
+local function onSceneHide(event)
+    if event and event.phase == "will" then
+        deselectPalette()
+    end
+end
+
+local function onSceneDestroy()
+    for _, field in pairs(state.textFields) do
+        field:removeSelf()
+    end
+    state.textFields = {}
+    clearGroup(state.groups.gridHolder)
+    clearGroup(state.groups.ui)
+    clearGroup(state.groups.palette)
+end
+
+scene:addEventListener("create", onSceneCreate)
+scene:addEventListener("show", onSceneShow)
+scene:addEventListener("hide", onSceneHide)
+scene:addEventListener("destroy", onSceneDestroy)
 
 return scene
